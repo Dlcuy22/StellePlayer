@@ -1,4 +1,4 @@
-# Music Player TUI
+# Stelle Music Player TUI
 
 A terminal-based music player with lyrics support built with Go and Bubble Tea.
 
