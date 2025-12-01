@@ -23,7 +23,7 @@ func Run(musicDir string) error {
 
 		if len(metas) == 0 {
 			fmt.Println("\nNo music files found in the specified directory")
-			fmt.Println("Supported formats: .mp3, .m4a, .flac, .wav, .ogg, .aac")
+			fmt.Println("Supported formats: .mp3, .m4a, .flac, .wav, .ogg, .aac, .opus")
 			program.Quit()
 			os.Exit(1)
 		}

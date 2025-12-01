@@ -2,8 +2,8 @@
 !define APP_VERSION "1.0.0"
 !define APP_PUBLISHER "StellePlayer"
 !define INSTALL_DIR "$PROGRAMFILES\${APP_NAME}"
-!define EXE_NAME "build\Player.exe"
-
+!define EXE_NAME "Player.exe"
+!define BUILD_DIR ""
 SetCompressor /SOLID lzma
 
 Name "${APP_NAME} ${APP_VERSION}"
@@ -19,7 +19,7 @@ UninstPage instfiles
 Section "Install"
   SetOutPath "$INSTDIR"
 
-  File /r "..\${EXE_NAME}"
+  File /r "..\build\${EXE_NAME}"
 
   CreateDirectory "$SMPROGRAMS\${APP_NAME}"
   CreateShortCut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${EXE_NAME}"

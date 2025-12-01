@@ -30,6 +30,7 @@ func LoadFromDirectory(dir string) ([]Metadata, error) {
 		".wav":  true,
 		".ogg":  true,
 		".aac":  true,
+		".opus": true,
 	}
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {

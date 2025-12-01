@@ -30,3 +30,4 @@ temp/
 *.aac
 /lyrics/
 /playlist/
+scripts/*.exe
