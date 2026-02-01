@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -47,37 +48,41 @@ type lyricsLoadedMsg struct {
 }
 
 type model struct {
-	songs          []Song
-	list           list.Model
-	progress       progress.Model
-	state          playerState
-	currentSong    *Song
-	currentTime    float64
-	cmd            *exec.Cmd
-	cmdMu          sync.Mutex
-	mu             sync.Mutex
-	width          int
-	height         int
-	lastUpdateTime time.Time
-	shuffle        bool
-	playHistory    []int
-	lyricsLoading  bool
-	loading        bool
-	loadingDots    int
-	seeking        bool
-	musicDir       string
+	songs           []Song
+	list            list.Model
+	progress        progress.Model
+	state           playerState
+	currentSong     *Song
+	currentTime     float64
+	cmd             *exec.Cmd
+	cmdMu           sync.Mutex
+	mu              sync.Mutex
+	width           int
+	height          int
+	lastUpdateTime  time.Time
+	shuffle         bool
+	playHistory     []int
+	lyricsLoading   bool
+	loading         bool
+	loadingDots     int
+	seeking         bool
+	musicDir        string
+	volume          int
+	volumeShowUntil time.Time
 }
 
 type keyMap struct {
-	Play     key.Binding
-	Pause    key.Binding
-	Stop     key.Binding
-	Next     key.Binding
-	Previous key.Binding
-	Forward  key.Binding
-	Backward key.Binding
-	Shuffle  key.Binding
-	Quit     key.Binding
+	Play       key.Binding
+	Pause      key.Binding
+	Stop       key.Binding
+	Next       key.Binding
+	Previous   key.Binding
+	Forward    key.Binding
+	Backward   key.Binding
+	Shuffle    key.Binding
+	VolumeUp   key.Binding
+	VolumeDown key.Binding
+	Quit       key.Binding
 }
 
 var keys = keyMap{
@@ -113,11 +118,18 @@ var keys = keyMap{
 		key.WithKeys("h"),
 		key.WithHelp("h", "shuffle"),
 	),
+	VolumeUp: key.NewBinding(
+		key.WithKeys("c"),
+		key.WithHelp("c", "vol up"),
+	),
+	VolumeDown: key.NewBinding(
+		key.WithKeys("v"),
+		key.WithHelp("v", "vol down"),
+	),
 	Quit: key.NewBinding(
 		key.WithKeys("q", "ctrl+c"),
 		key.WithHelp("q", "quit"),
 	),
-	// add vol up(c) and down(v)
 }
 
 func initialModel(musicDir string) *model {
@@ -146,6 +158,7 @@ func initialModel(musicDir string) *model {
 		loading:        true,
 		loadingDots:    0,
 		musicDir:       musicDir,
+		volume:         50,
 	}
 }
 
@@ -289,6 +302,32 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.shuffle = !m.shuffle
 			m.playHistory = make([]int, 0)
 			return m, nil
+
+		case key.Matches(msg, keys.VolumeUp):
+			if m.volume < 100 {
+				m.volume += 5
+				if m.volume > 100 {
+					m.volume = 100
+				}
+			}
+			m.volumeShowUntil = time.Now().Add(2 * time.Second)
+			if m.state == statePlaying && m.currentSong != nil {
+				return m, m.respawnWithCurrentVolume()
+			}
+			return m, nil
+
+		case key.Matches(msg, keys.VolumeDown):
+			if m.volume > 0 {
+				m.volume -= 5
+				if m.volume < 0 {
+					m.volume = 0
+				}
+			}
+			m.volumeShowUntil = time.Now().Add(2 * time.Second)
+			if m.state == statePlaying && m.currentSong != nil {
+				return m, m.respawnWithCurrentVolume()
+			}
+			return m, nil
 		}
 
 	case tickMsg:
@@ -345,7 +384,8 @@ func (m *model) playSong(song *Song) {
 	m.lyricsLoading = false
 
 	m.cmdMu.Lock()
-	m.cmd = exec.Command("ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", song.metadata.FilePath)
+	m.cmd = exec.Command("ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet",
+		"-volume", strconv.Itoa(m.volume), song.metadata.FilePath)
 	cmd := m.cmd
 	m.cmdMu.Unlock()
 
@@ -395,6 +435,7 @@ func (m *model) resumePlayback() {
 
 		m.cmdMu.Lock()
 		m.cmd = exec.Command("ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet",
+			"-volume", strconv.Itoa(m.volume),
 			"-ss", fmt.Sprintf("%.2f", m.currentTime), m.currentSong.metadata.FilePath)
 		cmd := m.cmd
 		m.cmdMu.Unlock()
@@ -455,6 +496,7 @@ func (m *model) seek(seconds float64) {
 
 		m.cmdMu.Lock()
 		m.cmd = exec.Command("ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet",
+			"-volume", strconv.Itoa(m.volume),
 			"-ss", fmt.Sprintf("%.2f", m.currentTime), m.currentSong.metadata.FilePath)
 		cmd := m.cmd
 		m.cmdMu.Unlock()
@@ -472,6 +514,39 @@ func (m *model) seek(seconds float64) {
 	}
 }
 
+func (m *model) respawnWithCurrentVolume() tea.Cmd {
+	if m.currentSong == nil || m.state != statePlaying {
+		return nil
+	}
+
+	m.cmdMu.Lock()
+	if m.cmd != nil && m.cmd.Process != nil {
+		m.cmd.Process.Kill()
+		m.cmd.Process.Wait()
+		m.cmd = nil
+	}
+
+	m.cmd = exec.Command("ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet",
+		"-volume", strconv.Itoa(m.volume),
+		"-ss", fmt.Sprintf("%.2f", m.currentTime), m.currentSong.metadata.FilePath)
+	cmd := m.cmd
+	m.cmdMu.Unlock()
+
+	m.lastUpdateTime = time.Now()
+
+	go func() {
+		cmd.Run()
+		m.mu.Lock()
+		m.cmdMu.Lock()
+		if m.cmd == cmd && m.state == statePlaying {
+			m.state = stateStopped
+		}
+		m.cmdMu.Unlock()
+		m.mu.Unlock()
+	}()
+
+	return nil
+}
 func (m *model) playNextCmd() tea.Cmd {
 	if len(m.songs) == 0 {
 		return nil
@@ -618,6 +693,7 @@ func (m *model) View() string {
 		"  p: play selected  space: pause/resume\n" +
 		"  s: stop           n/→: next  b/←: prev\n" +
 		"  t: forward 5s     r: rewind 5s\n" +
+		"  c: vol up         v: vol down\n" +
 		"  h: shuffle        q: quit\n"))
 
 	lyricsSection := "\n" + titleStyle.Render("Lyrics") + "\n\n"
@@ -690,11 +766,31 @@ func (m *model) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("62"))
 
-	return lipgloss.JoinHorizontal(
+	mainView := lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		leftStyle.Render(leftPanel),
 		rightStyle.Render(rightPanel),
 	)
+
+	// Volume toast at bottom center
+	if time.Now().Before(m.volumeShowUntil) {
+		volumeToastStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("230")).
+			Background(lipgloss.Color("238")).
+			Padding(0, 2).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("62"))
+
+		volumeText := fmt.Sprintf("Vol: %d%%", m.volume)
+		volumeToast := volumeToastStyle.Render(volumeText)
+
+		// Center the toast using lipgloss.Place
+		centeredToast := lipgloss.PlaceHorizontal(m.width, lipgloss.Center, volumeToast)
+
+		return mainView + "\n" + centeredToast
+	}
+
+	return mainView
 }
 
 func loadLyricsAsync(song *Song, musicDir string) tea.Cmd {
