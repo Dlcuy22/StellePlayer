@@ -13,15 +13,28 @@ VERSION=1.0.0
 ifeq ($(OS),Windows_NT)
 	RM = powershell -Command "if (Test-Path bin) { Remove-Item -Recurse -Force bin }; if (Test-Path $(BINARY_NAME).exe) { Remove-Item -Force $(BINARY_NAME).exe }"
 	MKDIR = powershell -Command "if (!(Test-Path bin)) { New-Item -ItemType Directory bin }"
+	MKDIR_BUILD = powershell -Command "if (!(Test-Path build)) { New-Item -ItemType Directory build }"
+	RM_BUILD = powershell -Command "if (Test-Path build) { Remove-Item -Recurse -Force build }"
 	MV_INSTALLER = powershell -Command "Move-Item -Path Scripts/$(BINARY_NAME)_Setup_$(VERSION).exe -Destination bin/$(BINARY_NAME)_Setup_$(VERSION).exe -Force"
 	MAKENSIS = makensis
-	GO_BUILD = powershell -Command "$$env:GOOS='$(1)'; $$env:GOARCH='$(2)'; go build -o $(3) ."
+	GO_BUILD = powershell -Command "$$env:GOOS='$(1)'; $$env:GOARCH='$(2)'; go build -buildvcs=false -o $(3) ."
+	NSIS_STEP = powershell -Command "Write-Output '[Windows] Compiling NSIS installer...'; & makensis Scripts/build.nsi; if ($$LASTEXITCODE -eq 0) { Write-Output '[Windows] Moving installer to bin/...'; Move-Item -Path Scripts/$(BINARY_NAME)_Setup_$(VERSION).exe -Destination bin/$(BINARY_NAME)_Setup_$(VERSION).exe -Force } else { Write-Output '[WARNING] NSIS compilation failed. Setup exe will not be created.' }"
 else
 	RM = rm -rf bin/ $(BINARY_NAME).exe
 	MKDIR = mkdir -p bin
+	MKDIR_BUILD = mkdir -p build
+	RM_BUILD = rm -rf build/
 	MV_INSTALLER = mv Scripts/$(BINARY_NAME)_Setup_$(VERSION).exe bin/
 	MAKENSIS = makensis
 	GO_BUILD = GOOS=$(1) GOARCH=$(2) go build -o $(3) .
+	NSIS_STEP = \
+		echo "[Windows] Compiling NSIS installer..."; \
+		if $(MAKENSIS) Scripts/build.nsi; then \
+			echo "[Windows] Moving installer to bin/..."; \
+			$(MV_INSTALLER); \
+		else \
+			echo "[WARNING] NSIS compilation failed. Setup exe will not be created."; \
+		fi
 endif
 
 run:
@@ -44,19 +57,13 @@ build-all:
 build-windows:
 	@echo "[Windows] Preparing directory..."
 	@$(MKDIR)
-	@mkdir -p build
+	@$(MKDIR_BUILD)
 	@echo "[Windows] Building standalone binary (amd64)..."
 	@$(call GO_BUILD,windows,amd64,bin/$(BINARY_NAME)-windows-amd64.exe)
 	@echo "[Windows] Building binary for installer..."
 	@$(call GO_BUILD,windows,amd64,build/$(BINARY_NAME).exe)
-	@echo "[Windows] Compiling NSIS installer..."
-	-@if $(MAKENSIS) Scripts/build.nsi; then \
-		echo "[Windows] Moving installer to bin/..."; \
-		$(MV_INSTALLER); \
-	else \
-		echo "[WARNING] NSIS compilation failed. Setup exe will not be created."; \
-	fi
-	@rm -rf build/
+	-@$(NSIS_STEP)
+	@$(RM_BUILD)
 
 build-linux:
 	@echo "[Linux] Preparing directory..."
@@ -79,4 +86,4 @@ build-macos:
 clean:
 	@echo Cleaning up build artifacts...
 	@$(RM)
-	@rm -rf build/
+	@$(RM_BUILD)

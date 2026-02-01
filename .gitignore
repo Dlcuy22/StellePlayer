@@ -34,3 +34,4 @@ scripts/*.exe
 bin/
 Player
 app_windows_amd64.syso
+custom-ffmpeg/
