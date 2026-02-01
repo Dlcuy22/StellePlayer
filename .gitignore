@@ -1,4 +1,4 @@
-
+genshin_ost/
 *.exe
 *.exe~
 *.dll
@@ -31,3 +31,6 @@ temp/
 /lyrics/
 /playlist/
 scripts/*.exe
+bin/
+Player
+app_windows_amd64.syso

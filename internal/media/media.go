@@ -130,6 +130,17 @@ func extractMetadata(filePath string) (Metadata, error) {
 					}
 				}
 			}
+			if tags, ok := streamMap["tags"].(map[string]interface{}); ok {
+				if title, ok := tags["title"].(string); ok && meta.Title == filepath.Base(filePath) {
+					meta.Title = title
+				}
+				if artist, ok := tags["artist"].(string); ok && meta.Artist == "Unknown Artist" {
+					meta.Artist = artist
+				}
+				if album, ok := tags["album"].(string); ok && meta.Album == "Unknown Album" {
+					meta.Album = album
+				}
+			}
 			break
 		}
 	}

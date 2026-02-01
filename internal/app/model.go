@@ -102,8 +102,8 @@ var keys = keyMap{
 		key.WithHelp("b/←", "previous"),
 	),
 	Forward: key.NewBinding(
-		key.WithKeys("f"),
-		key.WithHelp("f", "forward 5s"),
+		key.WithKeys("t"),
+		key.WithHelp("t", "forward 5s"),
 	),
 	Backward: key.NewBinding(
 		key.WithKeys("r"),
@@ -117,6 +117,7 @@ var keys = keyMap{
 		key.WithKeys("q", "ctrl+c"),
 		key.WithHelp("q", "quit"),
 	),
+	// add vol up(c) and down(v)
 }
 
 func initialModel(musicDir string) *model {
@@ -231,9 +232,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, keys.Play):
 			if len(m.songs) > 0 {
-				selectedIdx := m.list.Index()
-				if selectedIdx >= 0 && selectedIdx < len(m.songs) {
-					return m, m.playSongCmd(&m.songs[selectedIdx])
+				selectedItem := m.list.SelectedItem()
+				if selectedItem != nil {
+					selectedSong := selectedItem.(Song)
+					// Find the song in the main list to ensure we have the correct pointer/reference
+					for i := range m.songs {
+						if m.songs[i].metadata.FilePath == selectedSong.metadata.FilePath {
+							return m, m.playSongCmd(&m.songs[i])
+						}
+					}
 				}
 			}
 			return m, nil
@@ -244,9 +251,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.state == statePaused {
 				m.resumePlayback()
 			} else if m.state == stateStopped && len(m.songs) > 0 {
-				selectedIdx := m.list.Index()
-				if selectedIdx >= 0 && selectedIdx < len(m.songs) {
-					return m, m.playSongCmd(&m.songs[selectedIdx])
+				selectedItem := m.list.SelectedItem()
+				if selectedItem != nil {
+					selectedSong := selectedItem.(Song)
+					for i := range m.songs {
+						if m.songs[i].metadata.FilePath == selectedSong.metadata.FilePath {
+							return m, m.playSongCmd(&m.songs[i])
+						}
+					}
 				}
 			}
 			return m, nil
@@ -605,7 +617,7 @@ func (m *model) View() string {
 	leftPanel += infoStyle.Render(fmt.Sprintf("\nControls:\n" +
 		"  p: play selected  space: pause/resume\n" +
 		"  s: stop           n/→: next  b/←: prev\n" +
-		"  f: forward 5s     r: rewind 5s\n" +
+		"  t: forward 5s     r: rewind 5s\n" +
 		"  h: shuffle        q: quit\n"))
 
 	lyricsSection := "\n" + titleStyle.Render("Lyrics") + "\n\n"
