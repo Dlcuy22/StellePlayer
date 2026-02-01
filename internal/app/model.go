@@ -3,11 +3,11 @@ package app
 import (
 	"fmt"
 	"math/rand"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
+	"Player/internal/AudioEngine"
 	"Player/internal/lyrics"
 	"Player/internal/media"
 
@@ -53,8 +53,7 @@ type model struct {
 	state          playerState
 	currentSong    *Song
 	currentTime    float64
-	cmd            *exec.Cmd
-	cmdMu          sync.Mutex
+	engine         *AudioEngine.FFplayEngine
 	mu             sync.Mutex
 	width          int
 	height         int
@@ -139,6 +138,7 @@ func initialModel(musicDir string) *model {
 		list:           l,
 		progress:       prog,
 		state:          stateStopped,
+		engine:         AudioEngine.NewFFplayEngine(),
 		lastUpdateTime: time.Now(),
 		shuffle:        false,
 		playHistory:    make([]int, 0),
@@ -336,7 +336,7 @@ func (m *model) playSong(song *Song) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.stopPlayback()
+	m.engine.Stop()
 	m.currentSong = song
 	m.currentTime = 0
 	m.lastUpdateTime = time.Now()
@@ -344,46 +344,26 @@ func (m *model) playSong(song *Song) {
 	m.seeking = false
 	m.lyricsLoading = false
 
-	m.cmdMu.Lock()
-	m.cmd = exec.Command("ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", song.metadata.FilePath)
-	cmd := m.cmd
-	m.cmdMu.Unlock()
-
-	go func() {
-		cmd.Run()
+	m.engine.SetOnComplete(func() {
 		m.mu.Lock()
-		m.cmdMu.Lock()
-		if m.cmd == cmd && m.state == statePlaying {
+		if m.state == statePlaying {
 			m.state = stateStopped
 		}
-		m.cmdMu.Unlock()
 		m.mu.Unlock()
-	}()
+	})
+
+	m.engine.Play(song.metadata.FilePath, 0, 100)
 }
 
 func (m *model) stopPlayback() {
-	m.cmdMu.Lock()
-	if m.cmd != nil && m.cmd.Process != nil {
-		m.cmd.Process.Kill()
-		m.cmd.Process.Wait()
-		m.cmd = nil
-	}
-	m.cmdMu.Unlock()
-
+	m.engine.Stop()
 	m.state = stateStopped
 	m.currentTime = 0
 	m.seeking = false
 }
 
 func (m *model) pausePlayback() {
-	m.cmdMu.Lock()
-	if m.cmd != nil && m.cmd.Process != nil {
-		m.cmd.Process.Kill()
-		m.cmd.Process.Wait()
-		m.cmd = nil
-	}
-	m.cmdMu.Unlock()
-
+	m.engine.Pause()
 	m.state = statePaused
 }
 
@@ -393,22 +373,15 @@ func (m *model) resumePlayback() {
 		m.lastUpdateTime = time.Now()
 		m.seeking = false
 
-		m.cmdMu.Lock()
-		m.cmd = exec.Command("ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet",
-			"-ss", fmt.Sprintf("%.2f", m.currentTime), m.currentSong.metadata.FilePath)
-		cmd := m.cmd
-		m.cmdMu.Unlock()
-
-		go func() {
-			cmd.Run()
+		m.engine.SetOnComplete(func() {
 			m.mu.Lock()
-			m.cmdMu.Lock()
-			if m.cmd == cmd && m.state == statePlaying {
+			if m.state == statePlaying {
 				m.state = stateStopped
 			}
-			m.cmdMu.Unlock()
 			m.mu.Unlock()
-		}()
+		})
+
+		m.engine.Resume(m.currentTime, 100)
 	}
 }
 
@@ -439,36 +412,21 @@ func (m *model) seek(seconds float64) {
 
 	wasPlaying := m.state == statePlaying
 
-	m.cmdMu.Lock()
-	if m.cmd != nil && m.cmd.Process != nil {
-		m.cmd.Process.Kill()
-		m.cmd.Process.Wait()
-		m.cmd = nil
-	}
-	m.cmdMu.Unlock()
-
 	m.currentTime = newTime
 
 	if wasPlaying {
 		m.state = statePlaying
 		m.lastUpdateTime = time.Now()
 
-		m.cmdMu.Lock()
-		m.cmd = exec.Command("ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet",
-			"-ss", fmt.Sprintf("%.2f", m.currentTime), m.currentSong.metadata.FilePath)
-		cmd := m.cmd
-		m.cmdMu.Unlock()
-
-		go func() {
-			cmd.Run()
+		m.engine.SetOnComplete(func() {
 			m.mu.Lock()
-			m.cmdMu.Lock()
-			if m.cmd == cmd && m.state == statePlaying {
+			if m.state == statePlaying {
 				m.state = stateStopped
 			}
-			m.cmdMu.Unlock()
 			m.mu.Unlock()
-		}()
+		})
+
+		m.engine.Seek(m.currentTime, 100)
 	}
 }
 
