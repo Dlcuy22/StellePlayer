@@ -14,11 +14,19 @@ import (
 	"path/filepath"
 )
 
+var Version = "dev"
+
 func main() {
 	sourceDir := flag.String("sd", "", "Source directory to load music files")
 	installFFmpegFlag := flag.Bool("install-ffmpeg", false, "Force FFmpeg installation prompt")
 	customFFmpegDir := flag.String("use-custom-ffmpeg", "", "Path to directory containing custom FFmpeg binaries")
+	versionFlag := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("StellePlayer version %s\n", Version)
+		os.Exit(0)
+	}
 
 	// Prepend custom FFmpeg directory to PATH if provided
 	if *customFFmpegDir != "" {

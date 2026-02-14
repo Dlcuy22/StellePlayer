@@ -17,7 +17,7 @@ ifeq ($(OS),Windows_NT)
 	RM_BUILD = powershell -Command "if (Test-Path build) { Remove-Item -Recurse -Force build }"
 	MV_INSTALLER = powershell -Command "Move-Item -Path Scripts/$(BINARY_NAME)_Setup_$(VERSION).exe -Destination bin/$(BINARY_NAME)_Setup_$(VERSION).exe -Force"
 	MAKENSIS = makensis
-	GO_BUILD = powershell -Command "$$env:GOOS='$(1)'; $$env:GOARCH='$(2)'; go build -buildvcs=false -o $(3) ."
+	GO_BUILD = powershell -Command "$$env:GOOS='$(1)'; $$env:GOARCH='$(2)'; go build -buildvcs=false -ldflags '-X main.Version=$(VERSION)' -o $(3) ."
 	NSIS_STEP = powershell -Command "Write-Output '[Windows] Compiling NSIS installer...'; & makensis Scripts/build.nsi; if ($$LASTEXITCODE -eq 0) { Write-Output '[Windows] Moving installer to bin/...'; Move-Item -Path Scripts/$(BINARY_NAME)_Setup_$(VERSION).exe -Destination bin/$(BINARY_NAME)_Setup_$(VERSION).exe -Force } else { Write-Output '[WARNING] NSIS compilation failed. Setup exe will not be created.' }"
 else
 	RM = rm -rf bin/ $(BINARY_NAME).exe
@@ -26,7 +26,7 @@ else
 	RM_BUILD = rm -rf build/
 	MV_INSTALLER = mv Scripts/$(BINARY_NAME)_Setup_$(VERSION).exe bin/
 	MAKENSIS = makensis
-	GO_BUILD = GOOS=$(1) GOARCH=$(2) go build -o $(3) .
+	GO_BUILD = GOOS=$(1) GOARCH=$(2) go build -ldflags "-X main.Version=$(VERSION)" -o $(3) .
 	NSIS_STEP = \
 		echo "[Windows] Compiling NSIS installer..."; \
 		if $(MAKENSIS) Scripts/build.nsi; then \
